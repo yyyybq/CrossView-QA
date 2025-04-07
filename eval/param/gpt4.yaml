@@ -1,0 +1,4 @@
+client:
+  api_key: YOUR_GPT4_API_KEY
+params:
+  model: gpt-4o

@@ -1,20 +1,34 @@
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 import json
 import os
 import re
+import random
 # =================配置区=================
 # input_json_path = "/home/baiqiao/MVSR/exp/reasoning/InternVL2_5-8B__answers.jsonl"  # 你的JSON文件路径
-input_json_path = r"C:\Users\FS139\Desktop\qa_release\rotation.jsonl"
+input_json_path = r"C:\Users\FS139\Desktop\qa_release\crossviewQA.jsonl"
 image_base_dir = r'D:\data\image_annotation'  # 图像基础目录
 # output_dir = "/home/baiqiao/MVSR/exp/reasoning/output_visuals_intern/"       # 输出目录
 output_dir = r"C:\Users\FS139\Desktop\exp_Chat"       # 输出目录
 # font_path = "/usr/share/fonts/truetype/arial.ttf"              # linux
 font_path = r"C:\Windows\Fonts\arial.ttf"              #window
 # ========================================
-
+def open_image_with_exif(full_path):
+    img = Image.open(full_path)
+    # 检查 EXIF 信息
+    if hasattr(img, '_getexif'):
+        exif = img._getexif()
+        if exif is not None:
+            orientation = exif.get(274, 1)  # 274 是 EXIF 中的方向标签
+            if orientation == 3:  # 180 度旋转
+                img = img.rotate(180, expand=True)
+            elif orientation == 6:  # 顺时针旋转 90 度
+                img = img.rotate(270, expand=True)
+            elif orientation == 8:  # 逆时针旋转 90 度
+                img = img.rotate(90, expand=True)
+    return img
 def create_visualization(data_entry):
     # if 'gen_6_1' in data_entry["id"]:
-    if 'q2_1' in data_entry["id"]:
+    # if 'q2_1' in data_entry["id"]:
         # 创建画布 (宽度1200，高度根据内容自适应)
         canvas = Image.new('RGB', (750, 600), color=(255, 255, 255))
         draw = ImageDraw.Draw(canvas)
@@ -27,7 +41,8 @@ def create_visualization(data_entry):
         for img_path in data_entry["images"]:
             full_path = os.path.join(image_base_dir, img_path)
             try:
-                img = Image.open(full_path)
+                # img = Image.open(full_path)
+                img = open_image_with_exif(full_path)
                 img = img.resize((180, 140))  # 统一图像尺寸
                 image_row.append(img)
                 max_height = max(max_height, img.height)
@@ -117,13 +132,17 @@ if __name__ == "__main__":
 
     # 读取JSON数据
     with open(input_json_path, 'r') as f:
-        for line in f:
-            try:
-                data = json.loads(line.strip())
-                match = re.search(r"group(\d+)", data["id"])
-                group_id = int(match.group(1))
-               
-                # if (group_id>220 and group_id<240) or (group_id>262 and group_id<280):
-                create_visualization(data)
-            except json.JSONDecodeError:
-                print("JSON解析错误，跳过当前行")
+            lines = f.readlines()
+
+    random.shuffle(lines)
+    selected_lines = lines[:1000]
+    for line in selected_lines:
+        try:
+            data = json.loads(line.strip())
+            match = re.search(r"group(\d+)", data["id"])
+            group_id = int(match.group(1))
+            
+            # if (group_id>220 and group_id<240) or (group_id>262 and group_id<280):
+            create_visualization(data)
+        except json.JSONDecodeError:
+            print("JSON解析错误，跳过当前行")

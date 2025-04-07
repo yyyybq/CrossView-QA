@@ -1,0 +1,4 @@
+client: null
+params:
+  model_name: HuggingFaceM4/idefics2-8b
+  max_new_tokens: 500

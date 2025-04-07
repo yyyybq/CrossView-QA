@@ -1,0 +1,4 @@
+client: null
+params:
+  model_path: iic/mPLUG-Owl3-7B-240728
+  max_new_tokens: 100

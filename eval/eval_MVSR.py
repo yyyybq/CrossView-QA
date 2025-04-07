@@ -8,200 +8,173 @@ from transformers import AutoProcessor, AutoModelForVision2Seq
 from modelscope import AutoConfig, AutoModel, AutoTokenizer
 from anthropic import Anthropic
 from openai import OpenAI
-
+import yaml
+import argparse
 
 from utils import replace_old_root,load_images,find_json_files,encode_image
 # 全局变量
 DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
+Q_PREFIX = "Based on these images, answer the question based on this rule: You only need to provide *ONE* correct answer selecting from the options listed below. For example, if you think the correct answer is 'A. above' from ' A. above B. under C. front D. behind.', your response should only be 'A. above'.\nThe Question is: "
 
 
 
-def process_json_files(input_root, output_root, model_name, model_client, model_params, new_root):
+def process_images(image_paths, model_type):
+    """统一处理不同模型的图像输入"""
+    processors = {
+        "claude": lambda paths: [
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": f"image/{Image.open(p).format.lower()}",
+                    "data": base64.b64encode(open(p, 'rb').read()).decode()
+                }
+            } for p in paths
+        ],
+        
+        "gpt4": lambda paths: [
+            {
+                "type": "image_url",
+                "image_url": {
+                    "url": f"data:image/jpeg;base64,{encode_image(p)}",
+                    "detail": "high"
+                }
+            } for p in paths
+        ],
+        
+        "idefics": lambda paths, processor: processor(
+            text=processor.apply_chat_template(
+                [{"role": "user", "content": [{"type": "image"} for _ in paths]}],
+                add_generation_prompt=True
+            ),
+            images=paths,
+            return_tensors="pt"
+        ).to(DEVICE),
+        
+        "mPLUG": lambda paths, tokenizer: tokenizer(
+            [{"role": "user", "content": "<|image|> " * len(paths)}],
+            images=paths,
+            videos=None
+        ).to('cuda')
+    }
+    
+    return processors[model_type](image_paths)
+
+def process_question(question, images, model_name, model_params):
+    """处理问题并获取模型回答"""
+    question_prompt = Q_PREFIX  + question.replace("A.", " Choices: A.")
+    
+    model_handlers = {
+        "claude": lambda: model_params["client"].messages.create(
+            model=model_params["model"],
+            max_tokens=model_params["max_tokens"],
+            messages=[{
+                "role": "user",
+                "content": [{"type": "text", "text": question_prompt}] + process_images(images, "claude")
+            }]
+        ).content[0].text,
+        
+        "gpt4": lambda: model_params["client"].chat.completions.create(
+            model=model_params["model"],
+            messages=[{
+                "role": "user",
+                "content": [{"type": "text", "text": question_prompt}] + process_images(images, "gpt4")
+            }]
+        ).choices[0].message.content,
+        
+        "idefics": lambda: (
+            lambda processor, model: processor.batch_decode(
+                model.generate(
+                    **process_images(images, "idefics", processor),
+                    max_new_tokens=model_params["max_new_tokens"]
+                ),
+                skip_special_tokens=True
+            )[0]
+        )(
+            AutoProcessor.from_pretrained(model_params["model_name"]),
+            AutoModelForVision2Seq.from_pretrained(model_params["model_name"]).to(DEVICE)
+        ),
+        
+        "mPLUG": lambda: AutoModel.from_pretrained(
+            model_params["model_path"],
+            config=AutoConfig.from_pretrained(model_params["model_path"], trust_remote_code=True),
+            attn_implementation='flash_attention_2',
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True
+        ).eval().to(DEVICE).generate(
+            **{**process_images(images, "mPLUG", AutoTokenizer.from_pretrained(model_params["model_path"])),
+               'tokenizer': AutoTokenizer.from_pretrained(model_params["model_path"]),
+               'max_new_tokens': model_params["max_new_tokens"],
+               'decode_text': True}
+        )
+    }
+    
+    return model_handlers[model_name]()
+
+def process_batch(question_file, output_dir, model_name, model_params, image_folder):
     """
     处理 JSON 文件，调用指定模型回答问题，并保存结果
     """
-    setting_name = os.path.basename(input_root)
-    print(f"Processing files in input root: {input_root}")
+    output_path = os.path.join(output_dir, f"{model_name}_answers.jsonl")
+    results = []
+    with open(question_file, 'r', encoding='utf-8') as f:
 
-    json_files = find_json_files(input_root)
+        for line in f:
+            data = json.loads(line.strip())
+            question = data.get("question")
+            image_paths = data.get("images", [])
 
-    for file_path in json_files:
-        fine_name = os.path.basename(file_path)
-        output_folder = os.path.join(output_root, setting_name)
-        os.makedirs(output_folder, exist_ok=True)
+            image_paths = replace_old_root(image_paths, image_folder)
+            images = load_images(image_paths)
 
-        output_path = os.path.join(output_folder, fine_name.replace(".jsonl", "_answers.jsonl"))
+            # 调用统一的处理问题函数
+            model_answer = process_question(question, images, model_name, model_params)
 
-        # 判断输出文件是否存在
-        if os.path.exists(output_path):
-            print(f"Skipping {file_path}, as the output file {output_path} already exists.")
-            continue  # 跳过当前文件的处理
+            print(f'{model_name.capitalize()}: {model_answer}')
+            data["model_answer"] = model_answer
+            results.append(data)
 
-        results = []
-        with open(file_path, 'r', encoding='utf-8') as f:
-            print(f"Processing answers in {output_path}")
+    with open(output_path, 'w', encoding='utf-8') as output_file:
+        for item in results:
+            json.dump(item, output_file, ensure_ascii=False)
+            output_file.write('\n')
 
-            for line in f:
-                data = json.loads(line.strip())
-                question = data.get("question")
-                image_paths = data.get("images", [])
 
-                image_paths = replace_old_root(image_paths, new_root)
-                images = load_images(image_paths)
+# 加载模型配置
+def load_model_configs(model_name):
+    config_file = f"{model_name}.yaml"
+    with open(config_file, 'r') as f:
+        model_params = yaml.safe_load(f)
+    return model_params
 
-                # 构建问题提示
-                question_prompt = 'Answer the following question based on this rule: You only need to provide *ONE* correct letter like A,B,C selecting from the options listed below. The Question is: ' + question.replace("A.", " Choices: A.")
 
-                # 根据模型类型构建消息内容
-                if model_name == "claude":
-                    message_content = [
-                        {
-                            "type": "text",
-                            "text": question_prompt
-                        }
-                    ]
-                    for img_path in image_paths:
-                        with Image.open(img_path) as img:
-                            format = img.format.lower()
-                            media_type = f"image/{format}"
-                        with open(img_path, "rb") as image_file:
-                            image_data = base64.b64encode(image_file.read()).decode("utf-8")
-                            message_content.append({
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": media_type,
-                                    "data": image_data
-                                }
-                            })
-                    response = model_client.messages.create(
-                        model=model_params["model"],
-                        max_tokens=model_params["max_tokens"],
-                        messages=[
-                            {
-                                "role": "user",
-                                "content": message_content
-                            }
-                        ]
-                    )
-                    model_answer = response.content[0].text
-                elif model_name == "gpt4":
-                    base64_images = [encode_image(image) for image in image_paths]
-                    user_content = [{"type": "text", "text": question_prompt}]
-                    base64_images = [
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}",
-                                "detail": "high",
-                            },
-                        }
-                        for base64_image in base64_images
-                    ]
-                    user_content.extend(base64_images)
-                    messages = [{"role": "user", "content": user_content}]
-                    completion = model_client.chat.completions.create(
-                        model=model_params["model"],
-                        messages=messages
-                    )
-                    model_answer = completion.choices[0].message.content
-                elif model_name == "idefics":
-                    processor = AutoProcessor.from_pretrained(model_params["model_name"])
-                    model = AutoModelForVision2Seq.from_pretrained(model_params["model_name"]).to(DEVICE)
-                    messages = [{
-                        "role": "user",
-                        "content": [
-                            *[{"type": "image"} for _ in images],
-                            {"type": "text", "text": question_prompt}
-                        ]
-                    }]
-                    prompt = processor.apply_chat_template(messages, add_generation_prompt=True)
-                    inputs = processor(text=prompt, images=images, return_tensors="pt").to(DEVICE)
-                    generated_ids = model.generate(**inputs, max_new_tokens=model_params["max_new_tokens"])
-                    model_answer = processor.batch_decode(generated_ids, skip_special_tokens=True)[0]
-                elif model_name == "mPLUG":
-                    config = AutoConfig.from_pretrained(model_params["model_path"], trust_remote_code=True)
-                    model = AutoModel.from_pretrained(model_params["model_path"], attn_implementation='flash_attention_2', torch_dtype=torch.bfloat16, trust_remote_code=True).eval().to(DEVICE)
-                    tokenizer = AutoTokenizer.from_pretrained(model_params["model_path"])
-                    processor = model.init_processor(tokenizer)
-                    messages = [{
-                        "role": "user",
-                        "content": """<|image|> """ * len(images) + question_prompt
-                    },
-                    {
-                        "role": "assistant",
-                        "content": ""
-                    }]
-                    inputs = processor(messages, images=images, videos=None)
-                    inputs.to('cuda')
-                    inputs.update({
-                        'tokenizer': tokenizer,
-                        'max_new_tokens': model_params["max_new_tokens"],
-                        'decode_text': True,
-                    })
-                    model_answer = model.generate(**inputs)
+def main():
+    # 默认参数
+    default_question_file = ""
+    default_output_dir = "results"
+    default_image_folder = ''
 
-                print(f'{model_name.capitalize()}: {model_answer}')
-                data["model_answer"] = model_answer
-                results.append(data)
+    parser = argparse.ArgumentParser(description="Process questions and generate answers.")
+    parser.add_argument('--model', type=str, required=True, help="Name of the model (e.g., claude, gpt4, idefics, mPLUG).")
+    parser.add_argument('--question_file', type=str, default=default_question_file, help="Path to the input JSONL files.")
+    parser.add_argument('--output_dir', type=str, default=default_output_dir, help="Path to the output directory.")
+    parser.add_argument('--image_folder', type=str, default=default_image_folder, help="New root directory for image paths.")
 
-        with open(output_path, 'w', encoding='utf-8') as output_file:
-            for item in results:
-                json.dump(item, output_file, ensure_ascii=False)
-                output_file.write('\n')
+    args = parser.parse_args()
 
-# 定义模型配置
-models = {
-    "claude": {
-        "client": Anthropic(api_key="YOUR_CLAUDE_API_KEY"),
-        "params": {
-            "model": "claude-3-sonnet-20240229",
-            "max_tokens": 1000
-        }
-    },
-    "gpt4": {
-        "client": OpenAI(api_key="YOUR_GPT4_API_KEY"),
-        "params": {
-            "model": "gpt-4o",
-        }
-    },
-    "idefics": {
-        "client": None,
-        "params": {
-            "model_name": "HuggingFaceM4/idefics2-8b",
-            "max_new_tokens": 500
-        }
-    },
-    "mPLUG": {
-        "client": None,
-        "params": {
-            "model_path": 'iic/mPLUG-Owl3-7B-240728',
-            "max_new_tokens": 100
-        }
-    }
-}
+    model_name = args.model
+    question_file = args.question_file
+    output_dir = args.output_dir
+    image_folder = args.image_folder
 
-# 输入和输出目录
-input_roots = [
-    "/home/baiqiao/MVSR/other_all_image/qa_new/among",
-    "/home/baiqiao/MVSR/other_all_image/qa_new/around",
-    "/home/baiqiao/MVSR/other_all_image/qa_new/around_new",
-    "/home/baiqiao/MVSR/other_all_image/qa_new/linear",
-    "/home/baiqiao/MVSR/other_all_image/qa_new/rotation"
-]
+    # 加载模型配置
+    model_params = load_model_configs(model_name)
 
-output_roots = {
-    "claude": "/home/baiqiao/MVSR/exp/Claude3_0326",
-    "gpt4": "/home/baiqiao/MVSR/exp/GPT4o_0323",
-    "idefics": "/home/baiqiao/MVSR/exp/idefics2",
-    "mPLUG": "/home/baiqiao/MVSR/exp/mPLUG"
-}
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    # 处理 JSON 文件
+    process_batch(question_file, output_dir, model_name, model_params, image_folder)
 
-# 新的根目录
-new_root = "/root"
 
-# 处理每个模型
-for model_name, model_info in models.items():
-    print(f"Processing with model: {model_name}")
-    for input_root in input_roots:
-        process_json_files(input_root, output_roots[model_name], model_name, model_info["client"], model_info["params"], new_root)
+if __name__ == "__main__":
+    main()

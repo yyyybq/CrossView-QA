@@ -17,13 +17,14 @@ def generate_questions1(viewpoint, obj_pool, all_scene_img_desc2, directions, po
     question_index = 1
     for direction in directions:
         for position in positions:
-            if direction not in answers or position not in answers[direction]:
+            if direction not in answers[viewpoint_name] or position not in answers[viewpoint_name][direction]:
                 continue
             if direction == "none":
                 question = f"{all_scene_img_desc2}if you are positioned at the {viewpoint_name} viewpoint, what is to your {position}? A. {obj_pool[0]} B. {obj_pool[1]} C. {obj_pool[2]}"
             else:
                 question = f"{all_scene_img_desc2}if you are positioned at the {viewpoint_name} viewpoint and turn {direction}, what is to your {position}? A. {obj_pool[0]} B. {obj_pool[1]} C. {obj_pool[2]}"
-            answer = answers[direction][position]
+            answer = answers[viewpoint_name][direction][position]
+
             questions[f"{viewpoint}_{question_index}"] = (question, answer)
             question_index += 1
 
@@ -36,13 +37,15 @@ def generate_questions45(viewpoint, obj_pool, all_scene_img_desc1, directions, p
 
     for direction in directions:
         for position in positions:
-            if direction not in answers or position not in answers[direction]:
+            if direction not in answers[viewpoint_name] or position not in answers[viewpoint_name][direction]:
+
                 continue
             if direction == "none":
                 question = f"{all_scene_img_desc1}if you are positioned at the {viewpoint_name} viewpoint, what is to your {position}? A. {obj_pool[0]} B. {obj_pool[1]}"
             else:
                 question = f"{all_scene_img_desc1}if you are positioned at the {viewpoint_name} viewpoint and turn {direction}, what is to your {position}? A. {obj_pool[0]} B. {obj_pool[1]}"
-            answer = answers[direction][position]
+            answer = answers[viewpoint_name][direction][position]
+
             questions[f"{viewpoint_name}_{question_index}"] = (question, answer)
             question_index += 1
 
@@ -55,11 +58,11 @@ def generate_questions8(viewpoint, obj_pool, all_scene_img_desc3, directions, po
     question_index = 1
     for direction in directions:
         for i, position in enumerate(positions):
-            if direction not in answers or position not in answers[direction]:
+            if direction not in answers[viewpoint_name] or position not in answers[viewpoint_name][direction]:
                 continue
             question_key = f"{viewpoint}_{question_index}"
             question = f"{all_scene_img_desc3}if you are positioned at the {viewpoint_name} viewpoint and turn {direction}, what is to your {position}? A. {obj_pool[0]} B. {obj_pool[1]} C. {obj_pool[2]} D. {obj_pool[3]}"
-            answer = answers[direction][i]
+            answer = answers[viewpoint_name][direction][position]
             questions[question_key] = (question, answer)
             question_index += 1
     return questions
@@ -69,14 +72,15 @@ def generate_questions9(viewpoint, obj_pool, all_scene_img_desc1, directions, po
     question_index = 1
     for direction in directions:
         for i, position in enumerate(positions):
-            if direction not in answers or position not in answers[direction]:
+            if direction not in answers[viewpoint_name] or position not in answers[viewpoint_name][direction]:
                 continue
             question_key = f"{viewpoint}_{question_index}"
             if direction == "none":
                 question = f"{all_scene_img_desc1}if you are positioned at the {viewpoint_name} viewpoint, what is {position} you? A. {obj_pool[0]} B. {obj_pool[1]}"
             else:
                 question = f"{all_scene_img_desc1}if you are positioned at the {viewpoint_name} viewpoint and turn {direction}, what is to your {position}? A. {obj_pool[0]} B. {obj_pool[1]}"
-            answer = answers[direction][position]
+            answer = answers[viewpoint_name][direction][position]
+
             questions[question_key] = (question, answer)
             question_index += 1
     return questions
@@ -101,11 +105,13 @@ for (idx,lists) in enumerate(data):
                 "answer_2": {}
             }
     type = lists[1]
+    # print(type)
 
     #### Baiqiao, please double check the description, I think it's wrong, as we are having rotation
     all_scene_img_desc1 = "<image1><image2>Based on these two sequential orthogonal views of the same scene captured during rotation, " 
     all_scene_img_desc2 = "<image1><image2><image3>Based on these three sequential orthogonal views of the same scene captured during rotation, "
     all_scene_img_desc3 = "<image1><image2><image3><image4>Based on these four sequential orthogonal views of the same scene captured during rotation, "
+    all_scene_img_desc4 = "<image1><image2>Based on these two opposing views (front and back) of the same scene captured during rotation, " 
 
     if type == '1':
         obj_pool = [lists[2], lists[3], lists[4]]
@@ -115,15 +121,28 @@ for (idx,lists) in enumerate(data):
         positions = ["right", "left", "behind"]
 
         answers = {
-            "none": {"right": "B", "behind": "C"},
-            "90 degrees to the left": {"right": "A", "left": "C", "behind": "B"},
-            "90 degrees to the right": {"right": "C", "left": "A", "behind": "B"},
-            "180 degrees around": {"right": "B", "left": "C", "behind": "A"}
+            "first": {
+                "none": {"right": "B", "behind": "C"},
+                "90 degrees to the left": {"right": "A", "left": "C", "behind": "B"},
+                "180 degrees around": {"behind": "A", "left": "B"}
+            },
+            "second": {
+                "none": {"left": "A", "right": "C"},
+                "90 degrees to the left": {"right": "B", "behind": "C"},
+                "90 degrees to the right": {"left": "B", "behind": "A"},
+                "180 degrees around": {"behind": "B", "left": "C", "right": "A"}
+            },
+            "third": {
+                "none": {"left": "B", "behind": "A"},
+                "90 degrees to the right": {"right": "A", "left": "C", "behind": "B"},
+                "180 degrees around": {"behind": "C", "right": "B"}
+            }
         }
 
         viewpoints = [1, 2, 3]
         for viewpoint in viewpoints:
             questions_and_answers.update(generate_questions1(viewpoint, obj_pool, all_scene_img_desc2, directions, positions, answers))
+        print(questions_and_answers)
 
     if type == '4':
         obj_pool = [lists[2], lists[3]]
@@ -133,10 +152,16 @@ for (idx,lists) in enumerate(data):
         positions = ["right", "left", "behind"]
 
         answers = {
-            "none": {"right": "B"},
-            "90 degrees to the left": {"right": "A", "behind": "B"},
-            "90 degrees to the right": {"left": "B", "behind": "A"},
-            "180 degrees around": {"behind": "A", "left": "B", "right": "B"}
+            "first": {
+                "none": {"right": "B"},
+                "90 degrees to the left": {"right": "A", "behind": "B"},
+                "180 degrees around": {"behind": "A", "left": "B"}
+            },
+            "second": {
+                "none": {"left": "A"},
+                "90 degrees to the right": {"left": "B", "behind": "A"},
+                "180 degrees around": {"behind": "B", "right": "A"}
+            }
         }
 
         viewpoints = [1, 2]
@@ -151,10 +176,16 @@ for (idx,lists) in enumerate(data):
         positions = ["left", "right", "behind"]
 
         answers = {
-            "none": {"left": "B"},
-            "90 degrees to the right": {"left": "A", "behind": "B"},
-            "90 degrees to the left": {"right": "B", "behind": "A"},
-            "180 degrees around": {"behind": "A", "right": "B", "left": "A"}
+            "first": {
+                "none": {"left": "B"},
+                "90 degrees to the right": {"left": "A", "behind": "B"},
+                "180 degrees around": {"behind": "A", "right": "B"}
+            },
+            "second": {
+                "none": {"right": "A"},
+                "90 degrees to the left": {"right": "B", "behind": "A"},
+                "180 degrees around": {"behind": "B", "left": "A"}
+            }
         }
 
         viewpoints = [1, 2]
@@ -169,15 +200,23 @@ for (idx,lists) in enumerate(data):
         positions = ["behind", "left", "right"]
 
         answers = {
-            "none": {"behind": "B"},
-            "90 degrees to the right": {"left": "A", "right": "B"},
-            "90 degrees to the left": {"left": "B", "right": "A"},
-            "180 degrees around": {"behind": "A"}
+            "first": {
+                "none": {"behind": "B"},
+                "90 degrees to the right": {"left": "A", "right": "B"},
+                "90 degrees to the left": {"left": "B", "right": "A"},
+                "180 degrees around": {"behind": "A"}
+            },
+            "second": {
+                "none": {"behind": "A"},
+                "90 degrees to the right": {"left": "B", "right": "A"},
+                "90 degrees to the left": {"left": "A", "right": "B"},
+                "180 degrees around": {"behind": "B"}
+            }
         }
 
         viewpoints = [1, 2]
         for viewpoint in viewpoints:
-            questions_and_answers.update(generate_questions9(viewpoint, obj_pool, all_scene_img_desc1, directions, positions, answers))
+            questions_and_answers.update(generate_questions9(viewpoint, obj_pool, all_scene_img_desc4, directions, positions, answers))
     if type == '8':
         questions_and_answers = {}
 
@@ -185,15 +224,32 @@ for (idx,lists) in enumerate(data):
         directions = ["90 degrees to the left", "90 degrees to the right", "180 degrees around"]
         positions = ["right", "left", "behind", "front"]
         answers = {
-            "90 degrees to the left": ["A", "C", "B", "D"],
-            "90 degrees to the right": ["C", "A", "D", "B"],
-            "180 degrees around": ["D", "B", "A", "C"]
+        "first": {
+            "90 degrees to the left": {"right": "A", "left": "C", "behind": "B", "in front": "D"},
+            "90 degrees to the right": {"right": "C", "left": "A", "behind": "D", "in front": "B"},
+            "180 degrees around": {"right": "D", "left": "B", "behind": "A", "in front": "C"}
+        },
+        "second": {
+            "90 degrees to the left": {"right": "B", "left": "D", "behind": "C", "in front": "A"},
+            "90 degrees to the right": {"right": "D", "left": "B", "behind": "A", "in front": "C"},
+            "180 degrees around": {"right": "A", "left": "C", "behind": "B", "in front": "D"}
+        },
+        "third": {
+            "90 degrees to the left": {"right": "C", "left": "A", "behind": "D", "in front": "B"},
+            "90 degrees to the right": {"right": "A", "left": "C", "behind": "B", "in front": "D"},
+            "180 degrees around": {"right": "B", "left": "D", "behind": "C", "in front": "A"}
+        },
+        "fourth": {
+            "90 degrees to the left": {"right": "D", "left": "B", "behind": "A", "in front": "C"},
+            "90 degrees to the right": {"right": "B", "left": "D", "behind": "C", "in front": "A"},
+            "180 degrees around": {"right": "C", "left": "A", "behind": "D", "in front": "B"}
         }
+    }
     
         
         for viewpoint in range(1, 5):
    
-            questions_and_answers.update(generate_questions8(viewpoint, obj_pool, all_scene_img_desc1, directions, positions, answers))
+            questions_and_answers.update(generate_questions8(viewpoint, obj_pool, all_scene_img_desc3, directions, positions, answers))
 
 #####################
 # 查找匹配的元数据信息

@@ -35,7 +35,7 @@ def generate_questions(i, obj_pool,all_scene_img_desc):
     q1_2 = image_pairs[i][1] + move_two_q + move_two_a
 
     # 定义问题模板
-    q2_template = all_scene_img_desc + ', if you are positioned at the {viewpoint} viewpoint, what is behind you? A.{0} B.{1} C.{2} D.{3}'
+    q2_template = all_scene_img_desc + ', if you are positioned at the {viewpoint} viewpoint, what is behind you? A. {0} B. {1} C. {2} D. {3}'
     q2_1 = q2_template.format(obj_pool[1], obj_pool[2], obj_pool[3], obj_pool[4], viewpoint=number_to_ordinal(i))
     a2_1 = chr(ord('A') + i)  # 根据 i 的值动态生成答案
 
@@ -45,16 +45,34 @@ def generate_questions(i, obj_pool,all_scene_img_desc):
     q2_3_template = all_scene_img_desc + ', if you are positioned at the {viewpoint} viewpoint, then you turn right and move forward, will you get closer to the {}? A. Yes B. No'
     q2_3 = q2_3_template.format(obj_pool[(i + 4) % 4], viewpoint=number_to_ordinal(i))
 
-    q5_template = all_scene_img_desc + ', if you are positioned at the {viewpoint} viewpoint, what is to the {direction} of the {0} from your ego centric view? A.{1} B.{2} C.{3} D.{4}'
-    q5_1 = q5_template.format(obj_pool[0], obj_pool[1], obj_pool[2], obj_pool[3], obj_pool[4], viewpoint=i+1, direction="left")
+    q5_template = all_scene_img_desc + ', if you are positioned at the {viewpoint} viewpoint, what is to the {direction} of the {0} from your ego centric view? A. {1} B. {2} C. {3} D. {4}'
+    q5_1 = q5_template.format(obj_pool[0], obj_pool[1], obj_pool[2], obj_pool[3], obj_pool[4], viewpoint=number_to_ordinal(i), direction="left")
     a5_1 = chr(ord('A') + (i + 1) % 4)  # 根据 i 的值动态生成答案
 
-    q5_2 = q5_template.format(obj_pool[0], obj_pool[1], obj_pool[2], obj_pool[3], obj_pool[4], viewpoint=i+1, direction="right")
+    q5_2 = q5_template.format(obj_pool[0], obj_pool[1], obj_pool[2], obj_pool[3], obj_pool[4], viewpoint=number_to_ordinal(i), direction="right")
     a5_2 = chr(ord('A') + (i + 3) % 4)  # 根据 i 的值动态生成答案
 
     return q1_1, q1_2, q2_1, a2_1, q2_2, q2_3, q5_1, a5_1, q5_2, a5_2
+# 定义一个函数来生成问题
+def generate_question3(all_scene_img_desc, obj_pool, obj_index, direction):
+        return all_scene_img_desc + ', if you were positioned where the {0} is and facing the same direction, would you be able to see the {1}? A. Yes B. No'.format(obj_pool[0], obj_pool[obj_index])
 
+                # 定义一个函数来生成方向问题
+def generate_main_direction_question(all_scene_img_desc, obj_pool, direction):
+        return all_scene_img_desc + ', if you were positioned where the {0} is and facing the same direction, what would be to your {1}? A. {2} B. {3} C. {4} D. {5}'.format(obj_pool[0], direction, obj_pool[1], obj_pool[2], obj_pool[3], obj_pool[4])
 
+def generate_question6(found_index, all_scene_img_desc, obj_pool, question_index):
+        q_template = all_scene_img_desc + ', if you were positioned where the {0} is and facing the same direction, what would be to the {direction} of the {1} from this view? A. {2} B. {3} C. {4}'
+        # a_template = ['A','B','C','A']
+
+        q_left = q_template.format(*([obj_pool[found_index],obj_pool[0]] + [obj_pool[(found_index + 1 + i) % len(obj_pool)] for i in range(0,len(obj_pool)) if (found_index + 1 + i) % len(obj_pool) != found_index and ((found_index + 1 + i) % len(obj_pool) != 0)]),  direction="left")
+        a_left = 'A'
+
+        q_right = q_template.format(*([obj_pool[found_index],obj_pool[0]] + [obj_pool[(found_index + 1 + i) % len(obj_pool)] for i in range(0,len(obj_pool)) if (found_index + 1 + i) % len(obj_pool) != found_index and ((found_index + 1 + i) % len(obj_pool) != 0)]), direction="right")
+        # a_right = a_template[(found_index -1 + 2) % 4]  # 右边的答案是左边答案的下一个
+        a_right = "C" # 右边的答案是左边答案的下一个
+
+        return q_left, a_left, q_right, a_right
 
 label_dic = r'D:\data\image_annotation\label_anno\among\merge_anno_trans-需重新翻译bottoel_deter'
 save_root = r"D:\data\image_annotation\other_all_image\qa\among"
@@ -84,7 +102,7 @@ for i in range (743):
         arrangement = data.get("arrangement")
         semantic_front = data.get("semantic_front")
         visibility = data.get("visibility")
-        # print(image_group_folder)
+
         category = (image_group_folder.split('\\')[-1]).split('_')[0]
         
 
@@ -119,10 +137,10 @@ for i in range (743):
          
 
             # if  (any('Range hood' in item for item in sublist) for sublist in objects):
-            if id in (55, 206, 207, 235, 236, 261, 262, 302, 303, 304, 305, 306, 307, 308, 309, 417, 418, 425, 426, 442, 443, 444, 445, 481, 510, 521, 522, 523, 708,731):
-                # print('pass')
+            if id in (55, 206, 207, 235, 236, 261, 262, 302, 303, 304, 305, 306, 307, 308, 309, 417, 418, 425, 426, 442, 443, 444, 445, 481, 510, 521, 522, 523, 708,731) or 318<id<361:
+               
                 continue
-            if 561<id<645 or 498<id<511 or 376<id<402 or 318<id<362:
+            if 376<id<402  or 445<id<456 or 498<id<510 or 543<id<558 or 561<id<580 or 590<id<645 or id in (538,539):
                 pass_id.append(id)
                 continue
 
@@ -130,15 +148,15 @@ for i in range (743):
             elif id>40 and id < 222:
                 if (id%2!=0 and id<54) or (id%2==0 and 55<id ):
                     if id in (41, 62, 64, 66, 70, 74, 80, 148, 150, 208, 212) or 115<id<137:#sofa
-                        obj_pool = [main_object,'dark brown sofa', 'school bag and TV cabinet','wihte-red cabinet', 'Light-colored sofa']
+                        obj_pool = [main_object,'dark brown sofa', 'school bag and TV cabinet','white-red cabinet', 'Light-colored sofa']
 
                     elif id in (43, 56, 60, 88, 98, 100, 102, 106):#bed
-                        obj_pool = [main_object,'wihte-red cabinet', 'Light-colored sofa', 'dark brown sofa', 'school bag and TV cabinet']
+                        obj_pool = [main_object,'white-red cabinet', 'Light-colored sofa', 'dark brown sofa', 'school bag and TV cabinet']
                         
                     elif id==96:
-                        obj_pool = [main_object,'Light-colored sofa','dark brown sofa', 'school bag and TV cabinet', 'wihte-red cabinet' ]
+                        obj_pool = [main_object,'Light-colored sofa','dark brown sofa', 'school bag and TV cabinet', 'white-red cabinet' ]
                     else:#bag
-                        obj_pool = [main_object,'school bag and TV cabinet', 'wihte-red cabinet','Light-colored sofa','dark brown sofa'  ]
+                        obj_pool = [main_object,'school bag and TV cabinet', 'white-red cabinet','Light-colored sofa','dark brown sofa'  ]
 
                 else:
                     if id in (42, 44 , 46 ,48):
@@ -150,11 +168,11 @@ for i in range (743):
                     obj_pool = [main_object,'wall','sliding door','open space','grey chairs' ]
                 elif (id%3==1 and 222<id<235) or (id%3==0 and  236<id<261) or (id%3==2 and 262<id) :
                     if 222<id<238 or  id==284 or 292<id<300: 
-                        obj_pool = [main_object,'wihte-red cabinet', 'light-colored sofa', 'dark brown sofa', 'school bag and TV cabinet']
+                        obj_pool = [main_object,'white-red cabinet', 'light-colored sofa', 'dark brown sofa', 'school bag and TV cabinet']
                     elif 262<id<279: #sofa
-                        obj_pool = [main_object,'dark brown sofa', 'school bag and TV cabinet','wihte-red cabinet', 'Light-colored sofa']
+                        obj_pool = [main_object,'dark brown sofa', 'school bag and TV cabinet','white-red cabinet', 'Light-colored sofa']
                     else:
-                        obj_pool = [main_object,'school bag and TV cabinet', 'wihte-red cabinet','Light-colored sofa','dark brown sofa'  ]
+                        obj_pool = [main_object,'school bag and TV cabinet', 'white-red cabinet','Light-colored sofa','dark brown sofa'  ]
                 else:
                     if id==239:
                         obj_pool = [main_object,'wall','smoking machine','window','cardboard-covered glass door' ]
@@ -164,17 +182,22 @@ for i in range (743):
             elif id>309 and id < 319:
                     obj_pool = [main_object,'window','lots of toys','wall','printed glass door' ]
             elif id>360 and id < 377:
-                    obj_pool = [main_object,'bed sheet','clothes rack','table with cups on it','white bedside']
+                    obj_pool = [main_object,'bed sheet','white bedside','clothes rack','table with cups on it']
+            elif 539<id<544 or 582<id<589 or id==590:
+                    obj_pool = [main_object,'white bedside','clothes rack','table with cups on it','bed sheet']
                
             elif id>401 and id < 442:####################################### 412
-                if id%3==2:
+                if (id%3==2 and id < 417) or (id%3==1 and 418 < id <425 ) or (id%3==0 and 426 < id ):
                     obj_pool = [main_object,'boxes and bottles','black chair', 'window with fencing' ,'wall']
-                elif id%3==1:
-                    obj_pool = [main_object,'Red wrought iron bedside','White walls and windows', 'black cabinet' ,'Table and broom']
+                elif (id%3==1 and id < 417) or (id%3==0 and 418 < id < 425) or (id%3==2 and 426 < id ):
+                    obj_pool = [main_object,'red wrought iron bedside','White wall and windows', 'black cabinet' ,'table and broom']
                 else:
-                    obj_pool = [main_object,'Sofa and white wall', 'White walls and windows', 'Bicycle and TV' ,'Table and broom']
+                    obj_pool = [main_object,'wooden sofa', 'White walls and windows', 'bicycle and TV' ,'Table and broom']
             elif id>455 and id < 481:
-                    obj_pool = [main_object,'bedside','closet and door','white wall','window and blue curtain']
+                    if id in (461,467,469,471,473,479):
+                        obj_pool = [main_object,'bedside','closet and door','white wall','window and blue curtain']
+                    else:
+                        obj_pool = [main_object,'closet and door','white wall','window and blue curtain','bedside']
             elif 481<id<499 or 557<id<562 :
                 if id == 559:
                     obj_pool = [main_object,'gate','stone fountain','decorated wall','light brown wall']
@@ -182,8 +205,8 @@ for i in range (743):
                 else:
                     obj_pool = [main_object,'light brown wall','gate','stone fountain','decorated wall']
             # elif 498<id<511:
-            elif id>510 and id<520:
-                if id in (511,516 , 520):
+            elif id>510 and id<521:
+                if id in (511,516, 520):
                     obj_pool = [main_object,'red stool','cabinet and potted plant','light-colored sofa','dark brown sofa']
                 elif id==515:
                     obj_pool = [main_object,'light-colored sofa','dark brown sofa','red stool','cabinet and potted plant']
@@ -234,6 +257,8 @@ for i in range (743):
                     main_toward = 'left'
             elif id==731:
                 obj_pool = ['toy train','wooden podium','white board','metal lockers','TV']
+            elif 579<id<583:
+                obj_pool = ['cup','wooden podium','white board','metal lockers','TV']
             elif id>731:
                 if id<741:
                     obj_pool = ['toy train','black table','wall','printed glass door','window']
@@ -247,10 +272,9 @@ for i in range (743):
             # elif all(len(sublist) == 2 for sublist in objects):
             else:
                 # obj_pool = [main_object,objects[2][1] if objects[2][1]!=main_object else objects[2][0], objects[3][1] if objects[3][1]!=main_object else objects[3][0] ,objects[0][1] if objects[0][1]!=main_object else objects[0][0] ,objects[1][1] if objects[1][1]!=main_object else objects[1][0] ]
-  
+                    print(id)
                     continue
-
-            # print(obj_pool)
+          
             obj_pool = [item.lower() if  is_only_first_upper(item) else item for item in obj_pool]
             obj_pool = [s.replace('mental', 'metal') if 'mental' in s else s for s in obj_pool]
             all_scene_img_desc = "<image1><image2><image3><image4>Based on these four different viewpoints (front, left, back, and right)"
@@ -272,14 +296,7 @@ for i in range (743):
             # if category=='chair' :
             #     if image_group_idx>532:
             if main_toward!=None:
-                # 定义一个函数来生成问题
-                def generate_question3(all_scene_img_desc, obj_pool, obj_index, direction):
-                    return all_scene_img_desc + ', if you were positioned where the {0} is and facing the same direction, would you be able to see the {1}? A. Yes B. No'.format(obj_pool[0], obj_pool[obj_index])
-
-                # 定义一个函数来生成方向问题
-                def generate_main_direction_question(all_scene_img_desc, obj_pool, direction):
-                    return all_scene_img_desc + ', if you were positioned where the {0} is and facing the same direction, what would be to your {1}? A. {2} B. {3} C. {4} D. {5}'.format(obj_pool[0], direction, obj_pool[1], obj_pool[2], obj_pool[3], obj_pool[4])
-
+                
                 # 定义一个字典，将 main_toward 的值映射到对应的索引和答案
                 toward_mapping = {
                     'left': {'q3_1_obj': 2, 'q3_2_obj': 4, 'a3_1': 'A', 'a3_2': 'B', 'a4_1': 'A', 'a4_2': 'C'},
@@ -306,18 +323,7 @@ for i in range (743):
 
             sofa_time = 0
             q6_1 = a6_1 = q6_2 = a6_2 = q6_3 = a6_3 = q6_4 = a6_4 = None
-            def generate_question6(found_index, all_scene_img_desc, obj_pool, question_index):
-                q_template = all_scene_img_desc + ', if you were positioned where the {0} is and facing the same direction, what would be to the {direction} of the {1} from this view? A. {2} B. {3} C. {4}'
-                # a_template = ['A','B','C','A']
 
-                q_left = q_template.format(*([obj_pool[found_index],obj_pool[0]] + [obj_pool[(found_index + 1 + i) % len(obj_pool)] for i in range(0,len(obj_pool)) if (found_index + 1 + i) % len(obj_pool) != found_index and ((found_index + 1 + i) % len(obj_pool) != 0)]),  direction="left")
-                a_left = 'A'
-
-                q_right = q_template.format(*([obj_pool[found_index],obj_pool[0]] + [obj_pool[(found_index + 1 + i) % len(obj_pool)] for i in range(0,len(obj_pool)) if (found_index + 1 + i) % len(obj_pool) != found_index and ((found_index + 1 + i) % len(obj_pool) != 0)]), direction="right")
-                # a_right = a_template[(found_index -1 + 2) % 4]  # 右边的答案是左边答案的下一个
-                a_right = "C" # 右边的答案是左边答案的下一个
-
-                return q_left, a_left, q_right, a_right
 
             for index, s in enumerate(obj_pool):
                 if 'sofa' in s:
@@ -365,7 +371,7 @@ for i in range (743):
                     # 转换为相对路径
         image_files = [path.replace(base_path, "").replace("\\", "/") for path in updated_image_files]
         for i,item in enumerate([[questions_and_answers['questions_1'],questions_and_answers['answer_1']],[questions_and_answers['questions_2'],questions_and_answers['answer_2']],[questions_and_answers['questions_3'],questions_and_answers['answer_3']],[questions_and_answers['questions_4'],questions_and_answers['answer_4']]]):
-            # print(i)
+           
             for q_key in item[0]:
                 types = '{}_frame'.format(i)
                 # print(types)
@@ -443,15 +449,17 @@ for i in range (743):
         output_path = os.path.join(output_dir, f'among_group{idx}.jsonl')
         # with open(output_path, 'w', encoding='utf-8') as f:
         #     json.dump(results, f, ensure_ascii=False, indent=4)
-        with open(output_path, 'w', encoding='utf-8') as output_file:
-                for item in results:
-                    json.dump(item, output_file, ensure_ascii=False)
-                    output_file.write('\n')  # 每个 JSON 对象后添加换行符
+#         with open(output_path, 'w', encoding='utf-8') as output_file:
+#                 for item in results:
+#                     json.dump(item, output_file, ensure_ascii=False)
+#                     output_file.write('\n')  # 每个 JSON 对象后添加换行符
         
-        print(f"Converted {file} to {output_path}")
+#         print(f"Converted {file} to {output_path}")
 
-with open( r"C:\Users\FS139\Desktop\qa_release\among.jsonl", 'w', encoding='utf-8') as output_file:
-            for item in all_result:
-                json.dump(item, output_file, ensure_ascii=False)
-                output_file.write('\n')  # 每个 JSON 对象后添加换行符
+# with open( r"C:\Users\FS139\Desktop\qa_release\among.jsonl", 'w', encoding='utf-8') as output_file:
+#             for item in all_result:
+#                 json.dump(item, output_file, ensure_ascii=False)
+#                 output_file.write('\n')  # 每个 JSON 对象后添加换行符
 
+print(pass_id)
+print(len(pass_id))
